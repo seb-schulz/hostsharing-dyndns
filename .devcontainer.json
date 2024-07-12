@@ -1,0 +1,14 @@
+{
+  "name": "hostsharing-dyndns",
+  "image": "mcr.microsoft.com/devcontainers/go:1.22",
+  "customizations": {
+    // Configure properties specific to VS Code.
+    "vscode": {
+      "settings": {},
+      "extensions": ["esbenp.prettier-vscode", "golang.go"]
+    }
+  },
+  "runArgs": ["--userns=keep-id"],
+  "containerUser": "vscode",
+  "forwardPorts": [9000]
+}

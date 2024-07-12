@@ -20,3 +20,6 @@
 # Go workspace file
 go.work
 go.work.sum
+
+hostsharing-dyndns
+__debug_*
