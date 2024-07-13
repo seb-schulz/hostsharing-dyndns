@@ -10,21 +10,21 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type ServeType int8
+type serveType int8
 
 type serverConfig struct {
-	ServerType ServeType
+	ServerType serveType
 	HttpPort   string
 }
 
 const (
-	ServeTypeHttp ServeType = iota
-	ServeTypeFcgi
+	serveTypeHttp serveType = iota
+	serveTypeFcgi
 )
 
 func loadServerConfig() *serverConfig {
 	return &serverConfig{
-		ServerType: ServeTypeHttp,
+		ServerType: serveTypeHttp,
 		HttpPort:   "9000",
 	}
 }
@@ -38,7 +38,7 @@ func run() error {
 	})
 
 	switch config.ServerType {
-	case ServeTypeHttp:
+	case serveTypeHttp:
 		if config.HttpPort == "" {
 			return fmt.Errorf("http port not defined")
 		}
@@ -48,7 +48,7 @@ func run() error {
 		if err := http.ListenAndServe(":"+port, r); err != nil {
 			return fmt.Errorf("cannot run server: %v", err)
 		}
-	case ServeTypeFcgi:
+	case serveTypeFcgi:
 		if err := fcgi.Serve(nil, r); err != nil {
 			return fmt.Errorf("cannot run server: %v", err)
 		}
