@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -73,7 +74,7 @@ func base64StringToBytesHookFunc() mapstructure.DecodeHookFunc {
 	}
 }
 
-func loadServerConfig() *serverConfig {
+func loadServerConfig() (*serverConfig, error) {
 	c := serverConfig{
 		ServerType: serveTypeHttp,
 		HttpPort:   "9000",
@@ -90,7 +91,7 @@ func loadServerConfig() *serverConfig {
 	viper.AddConfigPath(".")
 
 	if err := viper.ReadInConfig(); err != nil {
-		panic(fmt.Errorf("fatal error config file: %w", err))
+		return nil, fmt.Errorf("fatal error config file: %w", err)
 	}
 
 	if err := viper.Unmarshal(&c, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
@@ -99,7 +100,7 @@ func loadServerConfig() *serverConfig {
 		mapstructure.StringToSliceHookFunc(","),
 		stringToServeTypeHookFunc(),
 	))); err != nil {
-		log.Fatalf("cannot unmarshal config: %v", err)
+		return nil, fmt.Errorf("cannot unmarshal config: %v", err)
 	}
 
 	validationErrors := []error{}
@@ -124,45 +125,71 @@ func loadServerConfig() *serverConfig {
 	}
 
 	if len(validationErrors) > 0 {
-		log.Fatalf("missing required configuration: \n\n%s", errors.Join(validationErrors...))
+		return nil, fmt.Errorf("missing required configuration: \n\n%s", errors.Join(validationErrors...))
 	}
-	log.Println(c)
 
-	return &c
+	return &c, nil
 }
 
-func run() error {
-	config := loadServerConfig()
-
-	r := chi.NewRouter()
-	r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "Hello World")
-	})
-	r.Mount("/", updaterHandler(config.UpdaterHandler))
-
-	switch config.ServerType {
-	case serveTypeHttp:
-		if config.HttpPort == "" {
-			return fmt.Errorf("http port not defined")
+var rootCmd = &cobra.Command{
+	Use:   "onegate",
+	Short: "OneGate is a single sign on service",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config, err := loadServerConfig()
+		if err != nil {
+			return err
 		}
 
-		port := config.HttpPort
-		log.Println("Server listening on port ", port)
-		if err := http.ListenAndServe(":"+port, r); err != nil {
-			return fmt.Errorf("cannot run server: %v", err)
+		r := chi.NewRouter()
+		r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, "Hello World")
+		})
+		r.Mount("/", updaterHandler(config.UpdaterHandler))
+
+		switch config.ServerType {
+		case serveTypeHttp:
+			if config.HttpPort == "" {
+				return fmt.Errorf("http port not defined")
+			}
+
+			port := config.HttpPort
+			log.Println("Server listening on port ", port)
+			if err := http.ListenAndServe(":"+port, r); err != nil {
+				return fmt.Errorf("cannot run server: %v", err)
+			}
+		case serveTypeFcgi:
+			if err := fcgi.Serve(nil, r); err != nil {
+				return fmt.Errorf("cannot run server: %v", err)
+			}
+		default:
+			panic("cannot run any server type")
 		}
-	case serveTypeFcgi:
-		if err := fcgi.Serve(nil, r); err != nil {
-			return fmt.Errorf("cannot run server: %v", err)
-		}
-	default:
-		panic("cannot run any server type")
-	}
-	return nil
+		return nil
+	},
+}
+
+var validateConfigCmd = &cobra.Command{
+	Use:   "validateConfig",
+	Short: "validate configuration files",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := loadServerConfig()
+		fmt.Println(c)
+		return err
+	},
+}
+
+var generatePasswordCmd = &cobra.Command{
+	Use:     "generatePassword",
+	Aliases: []string{"genpasswd"},
+	Short:   "generate random password and print relevant parameters",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return nil
+	},
 }
 
 func main() {
-	if err := run(); err != nil {
+	rootCmd.AddCommand(validateConfigCmd, generatePasswordCmd)
+	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
