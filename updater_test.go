@@ -50,9 +50,9 @@ func TestPasswordValidationMiddleware(t *testing.T) {
 			401,
 		},
 		{
-			httptest.NewRequest("GET", "/?passwd=2mlFWmE8HeqGclB9vCu7k8uoSEKfXXxTSpGnnEBvBPs=", nil),
+			httptest.NewRequest("GET", "/?passwd=2mlFWmE8HeqGclB9vCu7k8uoSEKfXXxTSpGnnEBvBPs", nil),
 			func(t *testing.T, origPasswd []byte) bool {
-				b, err := base64.URLEncoding.DecodeString("2mlFWmE8HeqGclB9vCu7k8uoSEKfXXxTSpGnnEBvBPs=")
+				b, err := base64.RawURLEncoding.DecodeString("2mlFWmE8HeqGclB9vCu7k8uoSEKfXXxTSpGnnEBvBPs")
 				if err != nil {
 					t.Fatalf("cannot decode hard-coded string: %v", err)
 				}

@@ -46,7 +46,7 @@ func PasswordValidationMiddleware(validate passwordValidator) func(next http.Han
 				return
 			}
 
-			decodedPasswd, err := base64.URLEncoding.DecodeString(passwd)
+			decodedPasswd, err := base64.RawURLEncoding.DecodeString(passwd)
 			if err != nil {
 				http.Error(w, "user or password wrong", http.StatusUnauthorized)
 				return

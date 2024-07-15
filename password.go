@@ -53,7 +53,13 @@ var generatePasswordCmd = &cobra.Command{
 			return err
 		}
 
-		key := argon2.IDKey(passwd, salt, time, memory, threads, keyLen)
+		encPasswd := base64.RawURLEncoding.EncodeToString(passwd)
+		decPasswd, err := base64.RawURLEncoding.DecodeString(encPasswd)
+		if err != nil {
+			return err
+		}
+
+		key := argon2.IDKey(decPasswd, salt, time, memory, threads, keyLen)
 
 		config, err := yaml.Marshal(struct {
 			Key     string
@@ -74,7 +80,7 @@ var generatePasswordCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("%s\n%s\n", config, base64.URLEncoding.EncodeToString(passwd))
+		fmt.Printf("%s\n%s\n", config, encPasswd)
 		return nil
 	},
 }
