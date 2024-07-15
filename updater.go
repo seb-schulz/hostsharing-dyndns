@@ -16,16 +16,18 @@ type ctxIPKey struct{ uint8 }
 
 type passwordValidator func(origPasswd []byte) bool
 
+type passwordConfig struct {
+	Key     []byte
+	Salt    []byte
+	Time    uint32
+	Memory  uint32
+	Threads uint8
+	KeyLen  uint32
+}
+
 type updaterHandlerConfig struct {
-	User     string
-	Password struct {
-		Key     []byte
-		Salt    []byte
-		Time    uint32
-		Memory  uint32
-		Threads uint8
-		KeyLen  uint32
-	}
+	User          string
+	Password      passwordConfig
 	Filename      string
 	DomainSubpart string
 }
