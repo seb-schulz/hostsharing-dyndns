@@ -1,11 +1,18 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
+	"fmt"
+	"log"
 	"net/http"
+	"net/netip"
+	"os"
 
 	"golang.org/x/crypto/argon2"
 )
+
+type ctxIPKey struct{ uint8 }
 
 type hashedPassword struct {
 	key     []byte
@@ -15,6 +22,9 @@ type hashedPassword struct {
 	threads uint8
 	keyLen  uint32
 }
+
+var ctxIPv4Key = ctxIPKey{uint8: 0}
+var ctxIPv6Key = ctxIPKey{uint8: 1}
 
 func (p *hashedPassword) isValid(origPasswd []byte) bool {
 	key := argon2.IDKey(origPasswd, p.salt, p.time, p.memory, p.threads, p.keyLen)
@@ -58,5 +68,75 @@ func UserValidationMiddleware(user string) func(next http.Handler) http.Handler 
 
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+func IPValidationMiddleware(next http.Handler) http.Handler {
+	parseAddrOrEmpty := func(ipStr string) (*netip.Addr, error) {
+		if ipStr == "" {
+			return nil, nil
+		}
+		r, err := netip.ParseAddr(ipStr)
+		if err != nil {
+			return nil, err
+		}
+		return &r, nil
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		valid := true
+
+		ipaddr, err := parseAddrOrEmpty(r.URL.Query().Get("ipaddr"))
+		if err != nil {
+			valid = false
+			http.Error(w, "ipaddr is incorrect", http.StatusBadRequest)
+		}
+		if ipaddr != nil && !ipaddr.Is4() {
+			valid = false
+			http.Error(w, "ipaddr is incorrect", http.StatusBadRequest)
+		}
+
+		ip6addr, err := parseAddrOrEmpty(r.URL.Query().Get("ip6addr"))
+		if err != nil {
+			valid = false
+			http.Error(w, "ip6addr is incorrect", http.StatusBadRequest)
+		}
+		if ip6addr != nil && !ip6addr.Is6() {
+			valid = false
+			http.Error(w, "ip6addr is incorrect", http.StatusBadRequest)
+		}
+
+		if valid && ipaddr != nil {
+			ctx = context.WithValue(ctx, ctxIPv4Key, ipaddr)
+		}
+		if valid && ip6addr != nil {
+			ctx = context.WithValue(ctx, ctxIPv6Key, ip6addr)
+		}
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func ZonefileWriteHandler(filename string, domainSubpart string, z zoneFileWriter) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ipaddr, _ := r.Context().Value(ctxIPv4Key).(*netip.Addr)
+		ipv6addr, _ := r.Context().Value(ctxIPv6Key).(*netip.Addr)
+
+		z.Set(subdomain{
+			Subpart: domainSubpart,
+			TTL:     60,
+			IPv4:    ipaddr,
+			IPv6:    ipv6addr,
+		})
+
+		f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			log.Fatalf("cannot write file: %v", err)
+		}
+		if err := z.Write(f); err != nil {
+			log.Println("Cannot write zonefile")
+		}
+		fmt.Fprintln(w, "Ok")
 	}
 }

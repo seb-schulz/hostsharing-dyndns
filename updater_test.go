@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -112,58 +114,6 @@ func TestUserValidationMiddleware(t *testing.T) {
 	}
 }
 
-type ctxIPKey struct{ uint8 }
-
-var ctxIPv4Key = ctxIPKey{uint8: 0}
-var ctxIPv6Key = ctxIPKey{uint8: 1}
-
-func IPValidationMiddleware(next http.Handler) http.Handler {
-	parseAddrOrEmpty := func(ipStr string) (*netip.Addr, error) {
-		if ipStr == "" {
-			return nil, nil
-		}
-		r, err := netip.ParseAddr(ipStr)
-		if err != nil {
-			return nil, err
-		}
-		return &r, nil
-	}
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		valid := true
-
-		ipaddr, err := parseAddrOrEmpty(r.URL.Query().Get("ipaddr"))
-		if err != nil {
-			valid = false
-			http.Error(w, "ipaddr is incorrect", http.StatusBadRequest)
-		}
-		if ipaddr != nil && !ipaddr.Is4() {
-			valid = false
-			http.Error(w, "ipaddr is incorrect", http.StatusBadRequest)
-		}
-
-		ip6addr, err := parseAddrOrEmpty(r.URL.Query().Get("ip6addr"))
-		if err != nil {
-			valid = false
-			http.Error(w, "ip6addr is incorrect", http.StatusBadRequest)
-		}
-		if ip6addr != nil && !ip6addr.Is6() {
-			valid = false
-			http.Error(w, "ip6addr is incorrect", http.StatusBadRequest)
-		}
-
-		if valid && ipaddr != nil {
-			ctx = context.WithValue(ctx, ctxIPv4Key, ipaddr)
-		}
-		if valid && ip6addr != nil {
-			ctx = context.WithValue(ctx, ctxIPv6Key, ip6addr)
-		}
-
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
 func TestIPValidationMiddleware(t *testing.T) {
 	checkContext := func(r *http.Request, ctxKey ctxIPKey, expectedValue *netip.Addr) {
 		got, ok := r.Context().Value(ctxKey).(*netip.Addr)
@@ -203,7 +153,6 @@ func TestIPValidationMiddleware(t *testing.T) {
 		route.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			checkContext(r, ctxIPv4Key, testCase.expectedIPv4)
 			checkContext(r, ctxIPv6Key, testCase.expectedIPv6)
-
 		})
 
 		w := httptest.NewRecorder()
@@ -212,5 +161,91 @@ func TestIPValidationMiddleware(t *testing.T) {
 		if resp.StatusCode != testCase.expectedStatusCode {
 			t.Errorf("status code is %v instead of %v", resp.StatusCode, testCase.expectedStatusCode)
 		}
+	}
+}
+
+type mockZonefileWriter struct {
+	s          subdomain
+	checkWrite func(m *mockZonefileWriter, wr io.Writer) error
+}
+
+func (m *mockZonefileWriter) Set(s subdomain) {
+	m.s = s
+
+}
+func (m *mockZonefileWriter) Write(wr io.Writer) error {
+	return m.checkWrite(m, wr)
+}
+
+func TestZonefileWriteHandler(t *testing.T) {
+	z, err := newZonefile()
+	if err != nil {
+		t.Errorf("cannot init zonefile manager: %v", err)
+	}
+	ZonefileWriteHandler("fake-file.txt", "example", z)
+
+	ctx := context.Background()
+	ipv4 := netip.MustParseAddr("192.168.1.1")
+	ipv6 := netip.MustParseAddr("2001:db8::1")
+
+	for _, testCase := range []struct {
+		ctx        context.Context
+		checkWrite func(m *mockZonefileWriter, wr io.Writer) error
+	}{
+		{
+			context.WithValue(ctx, ctxIPv4Key, &ipv4),
+			func(m *mockZonefileWriter, wr io.Writer) error {
+				if m.s.IPv4 != &ipv4 {
+					t.Errorf("got %v instead of %v", m.s.IPv4, &ipv4)
+				}
+
+				if m.s.IPv6 != nil {
+					t.Errorf("value was set to %v instead of nil", m.s.IPv6)
+				}
+				return nil
+			},
+		},
+		{
+			context.WithValue(ctx, ctxIPv6Key, &ipv6),
+			func(m *mockZonefileWriter, wr io.Writer) error {
+				if m.s.IPv6 != &ipv6 {
+					t.Errorf("got %v instead of %v", m.s.IPv6, &ipv6)
+				}
+
+				if m.s.IPv4 != nil {
+					t.Errorf("value was set to %v instead of nil", m.s.IPv4)
+				}
+				return nil
+			},
+		},
+		{
+			context.WithValue(context.WithValue(ctx, ctxIPv6Key, &ipv6), ctxIPv4Key, &ipv4),
+			func(m *mockZonefileWriter, wr io.Writer) error {
+				if m.s.IPv4 != &ipv4 {
+					t.Errorf("got %v instead of %v", m.s.IPv4, &ipv4)
+				}
+				if m.s.IPv6 != &ipv6 {
+					t.Errorf("got %v instead of %v", m.s.IPv6, &ipv6)
+				}
+				return nil
+			},
+		},
+	} {
+		file, err := os.CreateTemp("", "zone-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(file.Name())
+
+		route := chi.NewRouter()
+		route.Get("/", ZonefileWriteHandler(file.Name(), "example", &mockZonefileWriter{checkWrite: testCase.checkWrite}))
+
+		w := httptest.NewRecorder()
+		route.ServeHTTP(w, httptest.NewRequest("GET", "/", nil).WithContext(testCase.ctx))
+		resp := w.Result()
+		if resp.StatusCode != 200 {
+			t.Errorf("status code is %v instead of %v", resp.StatusCode, 200)
+		}
+
 	}
 }
