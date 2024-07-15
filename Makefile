@@ -11,7 +11,7 @@ help:		          ## Display this help
 
 .PHONY: build
 build:                    ## Bundle binary
-	$(GO) $@ ./...
+	CGO_ENABLED=0 $(GO) $@ -v -ldflags '-w -extldflags "-static"' ./...
 
 .PHONY: test vet
 test vet:
