@@ -8,11 +8,27 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type ctxIPKey struct{ uint8 }
 
 type passwordValidator func(origPasswd []byte) bool
+
+type updaterHandlerConfig struct {
+	User     string
+	Password struct {
+		Key     []byte
+		Salt    []byte
+		Time    uint32
+		Memory  uint32
+		Threads uint8
+		KeyLen  uint32
+	}
+	Filename      string
+	DomainSubpart string
+}
 
 var ctxIPv4Key = ctxIPKey{uint8: 0}
 var ctxIPv6Key = ctxIPKey{uint8: 1}
@@ -125,4 +141,13 @@ func ZonefileWriteHandler(filename string, domainSubpart string, z zoneFileWrite
 		}
 		fmt.Fprintln(w, "Ok")
 	}
+}
+
+func updaterHandler(c updaterHandlerConfig) http.Handler {
+	route := chi.NewRouter()
+	route.Use(UserValidationMiddleware(c.User))
+	route.Use(PasswordValidationMiddleware(argonPasswordValidator(c.Password.Key, c.Password.Salt, c.Password.Time, c.Password.Memory, c.Password.Threads, c.Password.KeyLen)))
+	route.Use(IPValidationMiddleware)
+	route.Get("/", ZonefileWriteHandler(c.Filename, c.DomainSubpart, newZonefile()))
+	return route
 }

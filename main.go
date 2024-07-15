@@ -13,8 +13,9 @@ import (
 type serveType int8
 
 type serverConfig struct {
-	ServerType serveType
-	HttpPort   string
+	ServerType     serveType
+	HttpPort       string
+	UpdaterHandler updaterHandlerConfig
 }
 
 const (
@@ -33,9 +34,10 @@ func run() error {
 	config := loadServerConfig()
 
 	r := chi.NewRouter()
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Hello World")
 	})
+	r.Mount("/", updaterHandler(config.UpdaterHandler))
 
 	switch config.ServerType {
 	case serveTypeHttp:

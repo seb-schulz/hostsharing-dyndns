@@ -155,11 +155,7 @@ func (m *mockZonefileWriter) Write(wr io.Writer) error {
 }
 
 func TestZonefileWriteHandler(t *testing.T) {
-	z, err := newZonefile()
-	if err != nil {
-		t.Errorf("cannot init zonefile manager: %v", err)
-	}
-	ZonefileWriteHandler("fake-file.txt", "example", z)
+	ZonefileWriteHandler("fake-file.txt", "example", newZonefile())
 
 	ctx := context.Background()
 	ipv4 := netip.MustParseAddr("192.168.1.1")
@@ -225,4 +221,9 @@ func TestZonefileWriteHandler(t *testing.T) {
 		}
 
 	}
+}
+
+func TestHttpRouter(t *testing.T) {
+	route := chi.NewRouter()
+	route.Mount("/", updaterHandler(updaterHandlerConfig{}))
 }

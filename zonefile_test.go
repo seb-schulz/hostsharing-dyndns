@@ -31,11 +31,7 @@ foobar.{DOM_HOSTNAME}. 60 IN AAAA 2001:db8::68`},
 foobar.{DOM_HOSTNAME}. 120 IN A 192.168.178.2
 foobar.{DOM_HOSTNAME}. 120 IN AAAA 2001:db8::68`},
 	} {
-		z, err := newZonefile()
-		if err != nil {
-			t.Errorf("failed to init zonefile struc: %s", err)
-		}
-
+		z := newZonefile()
 		z.Set(testCase.subdomain)
 
 		b := strings.Builder{}

@@ -29,13 +29,13 @@ type zoneFileWriter interface {
 	Write(wr io.Writer) error
 }
 
-func newZonefile() (*zonefile, error) {
+func newZonefile() *zonefile {
 	tmpl, err := template.New("Zonefile").Parse(DEFAULT_TEMPLATE)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
-	return &zonefile{tmpl: tmpl}, nil
+	return &zonefile{tmpl: tmpl}
 }
 
 func (tmpl *zonefile) Set(s subdomain) {
