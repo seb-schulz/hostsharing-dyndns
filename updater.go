@@ -8,30 +8,16 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
-
-	"golang.org/x/crypto/argon2"
 )
 
 type ctxIPKey struct{ uint8 }
 
-type hashedPassword struct {
-	key     []byte
-	salt    []byte
-	time    uint32
-	memory  uint32
-	threads uint8
-	keyLen  uint32
-}
+type passwordValidator func(origPasswd []byte) bool
 
 var ctxIPv4Key = ctxIPKey{uint8: 0}
 var ctxIPv6Key = ctxIPKey{uint8: 1}
 
-func (p *hashedPassword) isValid(origPasswd []byte) bool {
-	key := argon2.IDKey(origPasswd, p.salt, p.time, p.memory, p.threads, p.keyLen)
-	return subtle.ConstantTimeCompare(key, p.key) == 1
-}
-
-func PasswordValidationMiddleware(validate func(origPasswd []byte) bool) func(next http.Handler) http.Handler {
+func PasswordValidationMiddleware(validate passwordValidator) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			passwd := r.URL.Query().Get("passwd")
