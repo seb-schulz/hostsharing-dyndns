@@ -66,7 +66,7 @@ func base64StringToBytesHookFunc() mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 
-		if result, err := base64.StdEncoding.DecodeString(data.(string)); err == nil {
+		if result, err := base64.URLEncoding.DecodeString(data.(string)); err == nil {
 			return result, nil
 		}
 
@@ -175,15 +175,6 @@ var validateConfigCmd = &cobra.Command{
 		c, err := loadServerConfig()
 		fmt.Println(c)
 		return err
-	},
-}
-
-var generatePasswordCmd = &cobra.Command{
-	Use:     "generatePassword",
-	Aliases: []string{"genpasswd"},
-	Short:   "generate random password and print relevant parameters",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return nil
 	},
 }
 

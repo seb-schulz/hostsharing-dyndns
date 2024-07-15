@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 )
 
 func TestPasswordValidationMiddleware(t *testing.T) {
+	// .test. => LnRlc3Qu
 
 	for _, testCase := range []struct {
 		input              *http.Request
@@ -30,7 +32,7 @@ func TestPasswordValidationMiddleware(t *testing.T) {
 			401,
 		},
 		{
-			httptest.NewRequest("GET", "/?passwd=.test.", nil),
+			httptest.NewRequest("GET", "/?passwd=LnRlc3Qu", nil),
 			func(t *testing.T, origPasswd []byte) bool {
 				if !bytes.Equal(origPasswd, []byte(".test.")) {
 					t.Errorf("password missmatch: %s != \".test.\"", origPasswd)
@@ -41,11 +43,26 @@ func TestPasswordValidationMiddleware(t *testing.T) {
 			200,
 		},
 		{
-			httptest.NewRequest("GET", "/?passwd=.test.", nil),
+			httptest.NewRequest("GET", "/?passwd=LnRlc3Qu", nil),
 			func(t *testing.T, origPasswd []byte) bool {
 				return false
 			},
 			401,
+		},
+		{
+			httptest.NewRequest("GET", "/?passwd=2mlFWmE8HeqGclB9vCu7k8uoSEKfXXxTSpGnnEBvBPs=", nil),
+			func(t *testing.T, origPasswd []byte) bool {
+				b, err := base64.URLEncoding.DecodeString("2mlFWmE8HeqGclB9vCu7k8uoSEKfXXxTSpGnnEBvBPs=")
+				if err != nil {
+					t.Fatalf("cannot decode hard-coded string: %v", err)
+				}
+
+				if !bytes.Equal(origPasswd, b) {
+					t.Errorf("got %v instead of %v", origPasswd, b)
+				}
+				return true
+			},
+			200,
 		},
 	} {
 		route := chi.NewRouter()

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -45,7 +46,13 @@ func PasswordValidationMiddleware(validate passwordValidator) func(next http.Han
 				return
 			}
 
-			if !validate([]byte(passwd)) {
+			decodedPasswd, err := base64.URLEncoding.DecodeString(passwd)
+			if err != nil {
+				http.Error(w, "user or password wrong", http.StatusUnauthorized)
+				return
+			}
+
+			if !validate(decodedPasswd) {
 				http.Error(w, "user or password wrong", http.StatusUnauthorized)
 				return
 			}
