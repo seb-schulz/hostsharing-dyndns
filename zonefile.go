@@ -6,7 +6,7 @@ import (
 	"net/netip"
 )
 
-const DEFAULT_TEMPLATE = `{DEFAULT}
+const DEFAULT_TEMPLATE = `{DEFAULT_ZONEFILE}
 {{- with .Subdomain }}
 {{ if .IPv4 }}{{ .Subpart }}.{DOM_HOSTNAME}. {{ .TTL }} IN A {{ .IPv4 }}{{ end }}
 {{ if .IPv6 }}{{ .Subpart }}.{DOM_HOSTNAME}. {{ .TTL }} IN AAAA {{ .IPv6 }}{{ end -}}

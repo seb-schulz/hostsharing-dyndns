@@ -14,20 +14,20 @@ func TestZonefileWrite(t *testing.T) {
 		subdomain      subdomain
 		expectedResult string
 	}{
-		{subdomain: subdomain{}, expectedResult: `{DEFAULT}`},
+		{subdomain: subdomain{}, expectedResult: `{DEFAULT_ZONEFILE}`},
 		{subdomain: subdomain{"foobar", 60, &ipv4, nil},
-			expectedResult: `{DEFAULT}
+			expectedResult: `{DEFAULT_ZONEFILE}
 foobar.{DOM_HOSTNAME}. 60 IN A 192.168.178.2`},
 		{subdomain: subdomain{"foobar", 60, nil, &ipv6},
-			expectedResult: `{DEFAULT}
+			expectedResult: `{DEFAULT_ZONEFILE}
 
 foobar.{DOM_HOSTNAME}. 60 IN AAAA 2001:db8::68`},
 		{subdomain: subdomain{"foobar", 60, &ipv4, &ipv6},
-			expectedResult: `{DEFAULT}
+			expectedResult: `{DEFAULT_ZONEFILE}
 foobar.{DOM_HOSTNAME}. 60 IN A 192.168.178.2
 foobar.{DOM_HOSTNAME}. 60 IN AAAA 2001:db8::68`},
 		{subdomain: subdomain{"foobar", 120, &ipv4, &ipv6},
-			expectedResult: `{DEFAULT}
+			expectedResult: `{DEFAULT_ZONEFILE}
 foobar.{DOM_HOSTNAME}. 120 IN A 192.168.178.2
 foobar.{DOM_HOSTNAME}. 120 IN AAAA 2001:db8::68`},
 	} {
