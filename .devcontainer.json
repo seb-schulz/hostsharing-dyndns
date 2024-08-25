@@ -1,6 +1,6 @@
 {
   "name": "hostsharing-dyndns",
-  "image": "mcr.microsoft.com/devcontainers/go:1.22",
+  "image": "mcr.microsoft.com/devcontainers/go:1.23",
   "customizations": {
     // Configure properties specific to VS Code.
     "vscode": {
