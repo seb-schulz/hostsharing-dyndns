@@ -132,8 +132,8 @@ func loadServerConfig() (*serverConfig, error) {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "onegate",
-	Short: "OneGate is a single sign on service",
+	Use:   "hostsharing-dyndns",
+	Short: "hostsharing-dyndns is a dyndns service for Hostsharing e.G.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadServerConfig()
 		if err != nil {
