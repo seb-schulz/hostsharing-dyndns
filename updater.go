@@ -6,11 +6,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"os"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httplog/v2"
 )
 
 type ctxIPKey struct{ uint8 }
@@ -107,6 +109,7 @@ func IPValidationMiddleware(next http.Handler) http.Handler {
 			valid = false
 			http.Error(w, "ipaddr is incorrect", http.StatusBadRequest)
 		}
+		httplog.LogEntrySetField(ctx, "IPv4", slog.StringValue(fmt.Sprint(ipaddr)))
 
 		ip6addr, err := parseAddrOrEmpty(r.URL.Query().Get("ip6addr"))
 		if err != nil {
@@ -117,6 +120,7 @@ func IPValidationMiddleware(next http.Handler) http.Handler {
 			valid = false
 			http.Error(w, "ip6addr is incorrect", http.StatusBadRequest)
 		}
+		httplog.LogEntrySetField(ctx, "IPv6", slog.StringValue(fmt.Sprint(ip6addr)))
 
 		if valid && ipaddr != nil {
 			ctx = context.WithValue(ctx, ctxIPv4Key, ipaddr)

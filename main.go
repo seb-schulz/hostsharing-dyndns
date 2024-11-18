@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/fcgi"
 	"os"
@@ -22,6 +23,7 @@ type serverConfig struct {
 	ServerType     serveType
 	HttpPort       string
 	UpdaterHandler updaterHandlerConfig
+	Logger         loggerConfig
 }
 
 const (
@@ -84,6 +86,10 @@ func loadServerConfig() (*serverConfig, error) {
 				Threads: 4,
 			},
 		},
+		Logger: loggerConfig{
+			Level: slog.LevelInfo,
+			File:  "",
+		},
 	}
 
 	viper.SetConfigName(".hostsharing-dyndns.conf")
@@ -141,6 +147,9 @@ var rootCmd = &cobra.Command{
 		}
 
 		r := chi.NewRouter()
+		if config.Logger.Enabled {
+			r.Use(loggerMiddleware(config.Logger))
+		}
 		r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintln(w, "Hello World")
 		})
