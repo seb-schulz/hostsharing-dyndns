@@ -4,55 +4,20 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
-	"log/slog"
-	"net/http"
-	"net/http/fcgi"
 	"os"
 	"reflect"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/mitchellh/mapstructure"
+	"github.com/sebatec-eu/config-mate/hostsharing"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
-
-type serveType int8
 
 type serverConfig struct {
-	ServerType     serveType
-	HttpPort       string
 	UpdaterHandler updaterHandlerConfig
-	Logger         loggerConfig
-}
-
-const (
-	serveTypeHttp serveType = iota
-	serveTypeFcgi
-)
-
-func stringToServeTypeHookFunc() mapstructure.DecodeHookFunc {
-	return func(
-		f reflect.Type,
-		t reflect.Type,
-		data interface{}) (interface{}, error) {
-		if f.Kind() != reflect.String {
-			return data, nil
-		}
-		if t != reflect.TypeOf(serveTypeHttp) {
-			return data, nil
-		}
-
-		switch data.(string) {
-		case "http":
-			return serveTypeHttp, nil
-		case "fcgi":
-			return serveTypeFcgi, nil
-		case "fastcgi":
-			return serveTypeFcgi, nil
-		default:
-			return 0, fmt.Errorf("unknown server type")
-		}
+	Logger         struct {
+		Enabled bool
 	}
 }
 
@@ -78,35 +43,19 @@ func base64StringToBytesHookFunc() mapstructure.DecodeHookFunc {
 
 func loadServerConfig() (*serverConfig, error) {
 	c := serverConfig{
-		ServerType: serveTypeHttp,
-		HttpPort:   "9000",
 		UpdaterHandler: updaterHandlerConfig{
 			Password: passwordConfig{
 				KeyLen:  32,
 				Threads: 4,
 			},
 		},
-		Logger: loggerConfig{
-			Level: slog.LevelInfo,
-			File:  "",
-		},
 	}
 
-	viper.SetConfigName(".hostsharing-dyndns.conf")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("fatal error config file: %w", err)
-	}
-
-	if err := viper.Unmarshal(&c, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
-		base64StringToBytesHookFunc(),
+	if err := hostsharing.FcgiReadInConfig(&c, base64StringToBytesHookFunc(),
 		mapstructure.StringToTimeDurationHookFunc(),
 		mapstructure.StringToSliceHookFunc(","),
-		stringToServeTypeHookFunc(),
-	))); err != nil {
-		return nil, fmt.Errorf("cannot unmarshal config: %v", err)
+	); err != nil {
+		return nil, fmt.Errorf("fatal error config file: %w", err)
 	}
 
 	validationErrors := []error{}
@@ -148,30 +97,13 @@ var rootCmd = &cobra.Command{
 
 		r := chi.NewRouter()
 		if config.Logger.Enabled {
-			r.Use(loggerMiddleware(config.Logger))
+			r.Use(hostsharing.RequestLogger("hostsharing-dyndns"))
 		}
-		r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintln(w, "Hello World")
-		})
+		r.Use(middleware.Heartbeat("/ping"))
 		r.Mount("/", updaterHandler(config.UpdaterHandler))
 
-		switch config.ServerType {
-		case serveTypeHttp:
-			if config.HttpPort == "" {
-				return fmt.Errorf("http port not defined")
-			}
-
-			port := config.HttpPort
-			log.Println("Server listening on port ", port)
-			if err := http.ListenAndServe(":"+port, r); err != nil {
-				return fmt.Errorf("cannot run server: %v", err)
-			}
-		case serveTypeFcgi:
-			if err := fcgi.Serve(nil, r); err != nil {
-				return fmt.Errorf("cannot run server: %v", err)
-			}
-		default:
-			panic("cannot run any server type")
+		if err := hostsharing.ListenAndServe(r); err != nil {
+			return err
 		}
 		return nil
 	},
