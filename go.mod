@@ -5,6 +5,7 @@ go 1.24.1
 require (
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/sebatec-eu/config-mate v0.0.0-20250324223117-fb8c5800e513
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -21,7 +22,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/sagikazarmark/locafero v0.8.0 // indirect
-	github.com/sebatec-eu/config-mate v0.0.0-20250324214004-1680b8b129c1
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect

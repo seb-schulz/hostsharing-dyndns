@@ -51,7 +51,8 @@ func loadServerConfig() (*serverConfig, error) {
 		},
 	}
 
-	if err := hostsharing.FcgiReadInConfig(&c, base64StringToBytesHookFunc(),
+	if err := hostsharing.ReadInConfig(&c, "hostsharing-dyndns",
+		base64StringToBytesHookFunc(),
 		mapstructure.StringToTimeDurationHookFunc(),
 		mapstructure.StringToSliceHookFunc(","),
 	); err != nil {
@@ -97,7 +98,7 @@ var rootCmd = &cobra.Command{
 
 		r := chi.NewRouter()
 		if config.Logger.Enabled {
-			r.Use(hostsharing.RequestLogger("hostsharing-dyndns"))
+			r.Use(hostsharing.RequestLogger())
 		}
 		r.Use(middleware.Heartbeat("/ping"))
 		r.Mount("/", updaterHandler(config.UpdaterHandler))
