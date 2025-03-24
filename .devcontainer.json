@@ -1,11 +1,11 @@
 {
   "name": "hostsharing-dyndns",
-  "image": "mcr.microsoft.com/devcontainers/go:1.23",
+  "image": "ghcr.io/sebatec-eu/go-devcontainer:1",
   "customizations": {
     // Configure properties specific to VS Code.
     "vscode": {
       "settings": {},
-      "extensions": ["esbenp.prettier-vscode", "golang.go"]
+      "extensions": []
     }
   },
   "runArgs": ["--userns=keep-id"],
