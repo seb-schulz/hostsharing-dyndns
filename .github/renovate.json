@@ -1,24 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    "helpers:pinGitHubActionDigests",
-    "group:allNonMajor"
-  ],
-  "baseBranches": ["main"],
-  "rebaseWhen": "conflicted",
-  "packageRules": [
-    {
-      "matchManagers": ["dockerfile", "github-actions", "docker-compose"],
-      "groupName": "dev-dependency",
-      "pinDigests": true
-    },
-    {
-      "matchManagers": ["gomod"],
-      "pinDigests": true,
-      "postUpdateOptions": ["gomodTidy", "gomodMassage"],
-      "matchDepTypes": ["indirect"],
-      "groupName": "gomod-dependency"
-    }
+    "https://gist.githubusercontent.com/seb-schulz/86ae2e7ef1de082149821a507f111aa8/raw/renovate.json"
   ]
 }
