@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/sebatec-eu/config-mate v0.0.0-20250324223117-fb8c5800e513
+	github.com/sebatec-eu/config-mate v0.0.0-20250512155232-c1c25a91483d
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -13,7 +13,7 @@ require (
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
-	github.com/spf13/viper v1.20.0 // indirect
+	github.com/spf13/viper v1.20.1 // indirect
 )
 
 require (
