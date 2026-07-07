@@ -21,6 +21,14 @@ type serverConfig struct {
 	}
 }
 
+// base64StringToBytesHookFunc mirrors the unexported helper in
+// github.com/sebatec-eu/config-mate/hostsharing (see v1.9.0 hostsharing.go).
+// We duplicate it here only because our hook uses base64.URLEncoding while the
+// upstream version uses base64.StdEncoding. generatePassword writes URL-encoded
+// values and the bundled config contains URL-only characters, so swapping to
+// upstream would silently stuff raw strings into []byte fields at config-load
+// time and fail later at request time. Keep this local unless upstream
+// gains alphabet configurability.
 func base64StringToBytesHookFunc() mapstructure.DecodeHookFunc {
 	return func(
 		f reflect.Type,
