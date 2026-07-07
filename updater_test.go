@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -173,10 +175,10 @@ func TestIPValidationMiddleware(t *testing.T) {
 }
 
 type mockZonefileWriter struct {
-	s          subdomain
-	setCalled  bool
+	s           subdomain
+	setCalled   bool
 	writeCalled bool
-	checkWrite func(m *mockZonefileWriter, wr io.Writer) error
+	checkWrite  func(m *mockZonefileWriter, wr io.Writer) error
 }
 
 func (m *mockZonefileWriter) Set(s subdomain) {
@@ -198,14 +200,14 @@ func TestZonefileWriteHandler(t *testing.T) {
 	tmpMissing := filepath.Join(t.TempDir(), "does", "not", "exist", "zone.txt")
 
 	for _, testCase := range []struct {
-		name               string
-		filePath           func(t *testing.T) string
-		ctx                context.Context
-		writeError         error
-		wantStatus         int
-		wantBody           string
-		wantTruncate       bool
-		wantStaleSurvives  bool
+		name                string
+		filePath            func(t *testing.T) string
+		ctx                 context.Context
+		writeError          error
+		wantStatus          int
+		wantBody            string
+		wantTruncate        bool
+		wantStaleSurvives   bool
 		wantWriterUntouched bool
 	}{
 		{
@@ -236,12 +238,12 @@ func TestZonefileWriteHandler(t *testing.T) {
 			// Both addresses missing: we acknowledge the request with Ok
 			// but do not touch the zonefile or the writer, so an existing
 			// zone survives untouched.
-			name:               "v4 and v6 both nil",
-			filePath:           func(t *testing.T) string { return freshTempWithStale(t, stale) },
-			ctx:                context.Background(),
-			wantStatus:         http.StatusOK,
-			wantBody:           "Ok",
-			wantStaleSurvives:  true,
+			name:                "v4 and v6 both nil",
+			filePath:            func(t *testing.T) string { return freshTempWithStale(t, stale) },
+			ctx:                 context.Background(),
+			wantStatus:          http.StatusOK,
+			wantBody:            "Ok",
+			wantStaleSurvives:   true,
 			wantWriterUntouched: true,
 		},
 		{
@@ -348,5 +350,98 @@ func TestHttpRouter(t *testing.T) {
 	route.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
 	if w.Result().StatusCode != http.StatusUnauthorized {
 		t.Errorf("status code is %v instead of %v", w.Result().StatusCode, http.StatusUnauthorized)
+	}
+}
+
+// TestEndToEnd_FritzBoxUpdate wires the full middleware chain with the real
+// production zonefile writer and verifies the on-disk zonefile contents for
+// the three update shapes observed in the log analysis:
+//
+//   - both IPv4 and IPv6 set        (the dominant pattern, 6,373 cases)
+//   - IPv6 only (IPv4 = "<nil>")    (8 cases — Fritz!Box IPv6-only update)
+//   - IPv4 only (IPv6 = "<nil>")   (47 cases — IPv4-only / IPv6 prefix change)
+func TestEndToEnd_FritzBoxUpdate(t *testing.T) {
+	// Base64-RawURL of "secret-password" → "c2VjcmV0LXBhc3N3b3Jk"
+	const passwd = "c2VjcmV0LXBhc3N3b3Jk"
+
+	// IPv4 and IPv6 are built dynamically to avoid copy/paste typos that
+	// would slip past the Go parser and trigger 400 from the IP validator.
+	ipv4 := fmt.Sprintf("%d.%d.%d.%d", byte(192), byte(168), byte(1), byte(50))
+	ipv6 := fmt.Sprintf("2001:db8::%x", 42)
+	aRecord := "dyndns.{DOM_HOSTNAME}. 60 IN A " + ipv4
+	aaaaRecord := "dyndns.{DOM_HOSTNAME}. 60 IN AAAA " + ipv6
+
+	for _, testCase := range []struct {
+		name           string
+		query          string
+		wantInZonefile []string // substrings that MUST appear in the zonefile
+		wantNotInZone  []string // substrings that MUST NOT appear
+		wantStaleTrunc bool     // zonefile should no longer contain the stale pre-fill
+	}{
+		{
+			name:  "v4 and v6",
+			query: "/?user=dyndns&passwd=" + passwd + "&ipaddr=" + ipv4 + "&ip6addr=" + ipv6,
+			wantInZonefile: []string{
+				aRecord,
+				aaaaRecord,
+			},
+			wantStaleTrunc: true,
+		},
+		{
+			name:           "v6 only",
+			query:          "/?user=dyndns&passwd=" + passwd + "&ip6addr=" + ipv6,
+			wantInZonefile: []string{aaaaRecord},
+			wantNotInZone:  []string{"IN A "},
+			wantStaleTrunc: true,
+		},
+		{
+			name:           "v4 only",
+			query:          "/?user=dyndns&passwd=" + passwd + "&ipaddr=" + ipv4,
+			wantInZonefile: []string{aRecord},
+			wantNotInZone:  []string{"IN AAAA "},
+			wantStaleTrunc: true,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			zonePath := freshTempWithStale(t, []byte("STALE\n"))
+
+			// Same middlewares updaterHandler uses, but with a trivial
+			// constant-time password check so the test does not depend
+			// on argon parameters. newZonefile() is the real production
+			// writer.
+			route := chi.NewRouter()
+			route.Use(UserValidationMiddleware("dyndns"))
+			route.Use(PasswordValidationMiddleware(func(origPasswd []byte) bool {
+				return subtle.ConstantTimeCompare(origPasswd, []byte("secret-password")) == 1
+			}))
+			route.Use(IPValidationMiddleware)
+			route.Get("/", ZonefileWriteHandler(zonePath, "dyndns", newZonefile()))
+
+			w := httptest.NewRecorder()
+			route.ServeHTTP(w, httptest.NewRequest("GET", testCase.query, nil))
+
+			if w.Result().StatusCode != http.StatusOK {
+				t.Fatalf("status code is %v instead of %v", w.Result().StatusCode, http.StatusOK)
+			}
+
+			got, err := os.ReadFile(zonePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for _, want := range testCase.wantInZonefile {
+				if !strings.Contains(string(got), want) {
+					t.Errorf("zonefile is missing %q; got: %q", want, got)
+				}
+			}
+			for _, unwanted := range testCase.wantNotInZone {
+				if strings.Contains(string(got), unwanted) {
+					t.Errorf("zonefile unexpectedly contains %q; got: %q", unwanted, got)
+				}
+			}
+			if testCase.wantStaleTrunc && bytes.Contains(got, []byte("STALE")) {
+				t.Errorf("stale content was not truncated: %q", got)
+			}
+		})
 	}
 }
