@@ -1,14 +1,8 @@
 {
-  "name": "hostsharing-dyndns",
-  "image": "ghcr.io/sebatec-eu/go-devcontainer:1",
-  "customizations": {
-    // Configure properties specific to VS Code.
-    "vscode": {
-      "settings": {},
-      "extensions": []
-    }
-  },
-  "runArgs": ["--userns=keep-id"],
+  "image": "forge.sebatec.eu/sebatec-eu/devcontainers/standard:1",
   "containerUser": "vscode",
-  "forwardPorts": [9000]
+  // "forwardPorts": [9000]
+  "mounts": [
+    "source=${localEnv:HOME}/.copilot,target=/home/vscode/.copilot,type=bind,consistency=cached"
+  ]
 }
