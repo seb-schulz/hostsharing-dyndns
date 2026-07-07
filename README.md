@@ -12,6 +12,7 @@ It provides a simple DynDNS service running on https://hostsharing.net/ and runn
 
 - Run `make build`
 - Copy `hostsharing-dyndns` to fastcgi directory. For example: `scp hostsharing-dyndns xzy00-user:doms/dyndns.example.com/fastcgi-ssl/`
+- Or run `make deploy` after setting `SSH_HOST` and `SCP_DEST` in `Makefile.variables`.
 - Provide htaccess file into `doms/dyndns.example.com/htdocs-ssl/`
 
 ### Example for htaccess file

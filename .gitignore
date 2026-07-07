@@ -24,3 +24,4 @@ go.work.sum
 hostsharing-dyndns
 __debug_*
 .hostsharing-dyndns.conf
+Makefile.variables
