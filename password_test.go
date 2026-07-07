@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"io"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -24,5 +28,76 @@ func TestArgonPasswordValidator(t *testing.T) {
 		if got := testCase.v(testCase.password); got != testCase.expectedResult {
 			t.Errorf("test result not as expected: %v instead of %v", got, testCase.expectedResult)
 		}
+	}
+}
+
+func TestGeneratePasswordCmd(t *testing.T) {
+	for _, testCase := range []struct {
+		name          string
+		saltLength    uint16
+		passwdLength  uint16
+		time          uint32
+		memory        uint32
+		threads       uint8
+		keyLen        uint32
+		wantInYAML    []string
+		wantPasswdLen int // expected length of the printed password (RawURLEncoding)
+	}{
+		{
+			name:          "defaults",
+			saltLength:    16,
+			passwdLength:  32,
+			time:          1,
+			memory:        64 * 1024,
+			threads:       4,
+			keyLen:        32,
+			wantInYAML:    []string{"key:", "salt:", "time: 1", "memory: 65536", "threads: 4", "keylen: 32"},
+			wantPasswdLen: 43, // 32 bytes -> 43 chars base64url (no padding)
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			prevStdout := os.Stdout
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.Stdout = w
+			t.Cleanup(func() { os.Stdout = prevStdout })
+
+			done := make(chan string, 1)
+			go func() {
+				var buf bytes.Buffer
+				_, _ = io.Copy(&buf, r)
+				done <- buf.String()
+			}()
+
+			saltLength = testCase.saltLength
+			passwdLength = testCase.passwdLength
+			time = testCase.time
+			memory = testCase.memory
+			threads = testCase.threads
+			keyLen = testCase.keyLen
+
+			if err := generatePasswordCmd.RunE(generatePasswordCmd, nil); err != nil {
+				t.Fatalf("RunE returned error: %v", err)
+			}
+			_ = w.Close()
+			out := <-done
+
+			parts := strings.SplitN(out, "\n\n", 2)
+			if len(parts) != 2 {
+				t.Fatalf("expected YAML + password separated by blank line, got %q", out)
+			}
+			yamlPart, passwd := parts[0], strings.TrimSpace(parts[1])
+
+			for _, want := range testCase.wantInYAML {
+				if !strings.Contains(strings.ToLower(yamlPart), want) {
+					t.Errorf("YAML missing %q\nfull YAML:\n%s", want, yamlPart)
+				}
+			}
+			if len(passwd) != testCase.wantPasswdLen {
+				t.Errorf("password length = %d, want %d (got %q)", len(passwd), testCase.wantPasswdLen, passwd)
+			}
+		})
 	}
 }

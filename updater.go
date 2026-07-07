@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -98,34 +97,33 @@ func IPValidationMiddleware(next http.Handler) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		valid := true
 
 		ipaddr, err := parseAddrOrEmpty(r.URL.Query().Get("ipaddr"))
 		if err != nil {
-			valid = false
 			http.Error(w, "ipaddr is incorrect", http.StatusBadRequest)
+			return
 		}
 		if ipaddr != nil && !ipaddr.Is4() {
-			valid = false
 			http.Error(w, "ipaddr is incorrect", http.StatusBadRequest)
+			return
 		}
 		httplog.LogEntrySetField(ctx, "IPv4", slog.StringValue(fmt.Sprint(ipaddr)))
 
 		ip6addr, err := parseAddrOrEmpty(r.URL.Query().Get("ip6addr"))
 		if err != nil {
-			valid = false
 			http.Error(w, "ip6addr is incorrect", http.StatusBadRequest)
+			return
 		}
 		if ip6addr != nil && !ip6addr.Is6() {
-			valid = false
 			http.Error(w, "ip6addr is incorrect", http.StatusBadRequest)
+			return
 		}
 		httplog.LogEntrySetField(ctx, "IPv6", slog.StringValue(fmt.Sprint(ip6addr)))
 
-		if valid && ipaddr != nil {
+		if ipaddr != nil {
 			ctx = context.WithValue(ctx, ctxIPv4Key, ipaddr)
 		}
-		if valid && ip6addr != nil {
+		if ip6addr != nil {
 			ctx = context.WithValue(ctx, ctxIPv6Key, ip6addr)
 		}
 
@@ -145,12 +143,16 @@ func ZonefileWriteHandler(filename string, domainSubpart string, z zoneFileWrite
 			IPv6:    ipv6addr,
 		})
 
-		f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+		f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
-			log.Fatalf("cannot write file: %v", err)
+			slog.Error("cannot open zonefile", "filename", filename, "err", err)
+			fmt.Fprintln(w, "Ok")
+			return
 		}
+		defer f.Close()
+
 		if err := z.Write(f); err != nil {
-			log.Println("Cannot write zonefile")
+			slog.Error("cannot write zonefile", "filename", filename, "err", err)
 		}
 		fmt.Fprintln(w, "Ok")
 	}

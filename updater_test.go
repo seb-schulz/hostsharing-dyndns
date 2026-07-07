@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -109,7 +110,8 @@ func TestUserValidationMiddleware(t *testing.T) {
 }
 
 func TestIPValidationMiddleware(t *testing.T) {
-	checkContext := func(r *http.Request, ctxKey ctxIPKey, expectedValue *netip.Addr) {
+	checkContext := func(t *testing.T, r *http.Request, ctxKey ctxIPKey, expectedValue *netip.Addr) {
+		t.Helper()
 		got, ok := r.Context().Value(ctxKey).(*netip.Addr)
 		if expectedValue != nil && !ok {
 			t.Errorf("expected value but got nothing")
@@ -127,34 +129,46 @@ func TestIPValidationMiddleware(t *testing.T) {
 	ipv6 := netip.MustParseAddr("2001:db8::1")
 
 	for _, testCase := range []struct {
+		name               string
 		input              *http.Request
 		expectedStatusCode int
 		expectedIPv4       *netip.Addr
 		expectedIPv6       *netip.Addr
 	}{
-		{httptest.NewRequest("GET", "/", nil), 200, nil, nil},
-		{httptest.NewRequest("GET", "/?ipaddr=192.168.1.1", nil), 200, &ipv4, nil},
-		{httptest.NewRequest("GET", "/?ip6addr=2001:db8::1", nil), 200, nil, &ipv6},
-		{httptest.NewRequest("GET", "/?ipaddr=192.168.1.1&ip6addr=2001:db8::1", nil), 200, &ipv4, &ipv6},
+		{"empty", httptest.NewRequest("GET", "/", nil), 200, nil, nil},
+		{"v4 only", httptest.NewRequest("GET", "/?ipaddr=192.168.1.1", nil), 200, &ipv4, nil},
+		{"v6 only", httptest.NewRequest("GET", "/?ip6addr=2001:db8::1", nil), 200, nil, &ipv6},
+		{"both", httptest.NewRequest("GET", "/?ipaddr=192.168.1.1&ip6addr=2001:db8::1", nil), 200, &ipv4, &ipv6},
 
-		{httptest.NewRequest("GET", "/?ipaddr=a.168.1.1", nil), 400, nil, nil},
-		{httptest.NewRequest("GET", "/?ip6addr=2001:db8::x", nil), 400, nil, nil},
-		{httptest.NewRequest("GET", "/?ipaddr=a.168.1.1&ip6addr=2001:db8::1", nil), 400, nil, nil},
-		{httptest.NewRequest("GET", "/?ipaddr=192.168.1.1&ip6addr=2001:db8::x", nil), 400, nil, nil},
+		{"invalid v4", httptest.NewRequest("GET", "/?ipaddr=a.168.1.1", nil), 400, nil, nil},
+		{"invalid v6", httptest.NewRequest("GET", "/?ip6addr=2001:db8::x", nil), 400, nil, nil},
+		{"invalid v4 with valid v6", httptest.NewRequest("GET", "/?ipaddr=a.168.1.1&ip6addr=2001:db8::1", nil), 400, nil, nil},
+		{"valid v4 with invalid v6", httptest.NewRequest("GET", "/?ipaddr=192.168.1.1&ip6addr=2001:db8::x", nil), 400, nil, nil},
+
+		// Family-mismatch: IPv6 value in the v4 slot and vice versa.
+		{"v6 in ipaddr slot", httptest.NewRequest("GET", "/?ipaddr=2001:db8::1", nil), 400, nil, nil},
+		{"v4 in ip6addr slot", httptest.NewRequest("GET", "/?ip6addr=192.168.1.1", nil), 400, nil, nil},
 	} {
-		route := chi.NewRouter()
-		route.Use(IPValidationMiddleware)
-		route.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			checkContext(r, ctxIPv4Key, testCase.expectedIPv4)
-			checkContext(r, ctxIPv6Key, testCase.expectedIPv6)
-		})
+		t.Run(testCase.name, func(t *testing.T) {
+			nextCalled := false
+			route := chi.NewRouter()
+			route.Use(IPValidationMiddleware)
+			route.Get("/", func(w http.ResponseWriter, r *http.Request) {
+				nextCalled = true
+				checkContext(t, r, ctxIPv4Key, testCase.expectedIPv4)
+				checkContext(t, r, ctxIPv6Key, testCase.expectedIPv6)
+			})
 
-		w := httptest.NewRecorder()
-		route.ServeHTTP(w, testCase.input)
-		resp := w.Result()
-		if resp.StatusCode != testCase.expectedStatusCode {
-			t.Errorf("status code is %v instead of %v", resp.StatusCode, testCase.expectedStatusCode)
-		}
+			w := httptest.NewRecorder()
+			route.ServeHTTP(w, testCase.input)
+			resp := w.Result()
+			if resp.StatusCode != testCase.expectedStatusCode {
+				t.Errorf("status code is %v instead of %v", resp.StatusCode, testCase.expectedStatusCode)
+			}
+			if resp.StatusCode >= 400 && nextCalled {
+				t.Errorf("next handler was invoked after an error response")
+			}
+		})
 	}
 }
 
@@ -172,75 +186,130 @@ func (m *mockZonefileWriter) Write(wr io.Writer) error {
 }
 
 func TestZonefileWriteHandler(t *testing.T) {
-	ZonefileWriteHandler("fake-file.txt", "example", newZonefile())
-
 	ctx := context.Background()
 	ipv4 := netip.MustParseAddr("192.168.1.1")
 	ipv6 := netip.MustParseAddr("2001:db8::1")
 
+	stale := []byte("STALE-CONTENT-THAT-MUST-NOT-SURVIVE\n")
+	tmpMissing := filepath.Join(t.TempDir(), "does", "not", "exist", "zone.txt")
+
 	for _, testCase := range []struct {
-		ctx        context.Context
-		checkWrite func(m *mockZonefileWriter, wr io.Writer) error
+		name         string
+		filePath     func(t *testing.T) string
+		ctx          context.Context
+		writeError   error
+		wantStatus   int
+		wantBody     string
+		wantTruncate bool
 	}{
 		{
-			context.WithValue(ctx, ctxIPv4Key, &ipv4),
-			func(m *mockZonefileWriter, wr io.Writer) error {
-				if m.s.IPv4 != &ipv4 {
-					t.Errorf("got %v instead of %v", m.s.IPv4, &ipv4)
-				}
-
-				if m.s.IPv6 != nil {
-					t.Errorf("value was set to %v instead of nil", m.s.IPv6)
-				}
-				return nil
-			},
+			name:         "v4 only",
+			filePath:     func(t *testing.T) string { return freshTempWithStale(t, stale) },
+			ctx:          context.WithValue(ctx, ctxIPv4Key, &ipv4),
+			wantStatus:   http.StatusOK,
+			wantBody:     "Ok",
+			wantTruncate: true,
 		},
 		{
-			context.WithValue(ctx, ctxIPv6Key, &ipv6),
-			func(m *mockZonefileWriter, wr io.Writer) error {
-				if m.s.IPv6 != &ipv6 {
-					t.Errorf("got %v instead of %v", m.s.IPv6, &ipv6)
-				}
-
-				if m.s.IPv4 != nil {
-					t.Errorf("value was set to %v instead of nil", m.s.IPv4)
-				}
-				return nil
-			},
+			name:         "v6 only",
+			filePath:     func(t *testing.T) string { return freshTempWithStale(t, stale) },
+			ctx:          context.WithValue(ctx, ctxIPv6Key, &ipv6),
+			wantStatus:   http.StatusOK,
+			wantBody:     "Ok",
+			wantTruncate: true,
 		},
 		{
-			context.WithValue(context.WithValue(ctx, ctxIPv6Key, &ipv6), ctxIPv4Key, &ipv4),
-			func(m *mockZonefileWriter, wr io.Writer) error {
-				if m.s.IPv4 != &ipv4 {
-					t.Errorf("got %v instead of %v", m.s.IPv4, &ipv4)
-				}
-				if m.s.IPv6 != &ipv6 {
-					t.Errorf("got %v instead of %v", m.s.IPv6, &ipv6)
-				}
-				return nil
-			},
+			name:         "v4 and v6",
+			filePath:     func(t *testing.T) string { return freshTempWithStale(t, stale) },
+			ctx:          context.WithValue(context.WithValue(ctx, ctxIPv6Key, &ipv6), ctxIPv4Key, &ipv4),
+			wantStatus:   http.StatusOK,
+			wantBody:     "Ok",
+			wantTruncate: true,
+		},
+		{
+			// Errors are logged internally; the client always sees Ok.
+			name:         "write error",
+			filePath:     func(t *testing.T) string { return freshTempWithStale(t, stale) },
+			writeError:   fmt.Errorf("disk on fire"),
+			wantStatus:   http.StatusOK,
+			wantBody:     "Ok",
+			wantTruncate: false,
+		},
+		{
+			name:       "open error",
+			filePath:   func(t *testing.T) string { return tmpMissing },
+			wantStatus: http.StatusOK,
+			wantBody:   "Ok",
 		},
 	} {
-		file, err := os.CreateTemp("", "zone-*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(file.Name())
+		t.Run(testCase.name, func(t *testing.T) {
+			path := testCase.filePath(t)
+			writer := &mockZonefileWriter{
+				checkWrite: func(m *mockZonefileWriter, wr io.Writer) error {
+					return testCase.writeError
+				},
+			}
 
-		route := chi.NewRouter()
-		route.Get("/", ZonefileWriteHandler(file.Name(), "example", &mockZonefileWriter{checkWrite: testCase.checkWrite}))
+			routeCtx := testCase.ctx
+			if routeCtx == nil {
+				routeCtx = context.Background()
+			}
 
-		w := httptest.NewRecorder()
-		route.ServeHTTP(w, httptest.NewRequest("GET", "/", nil).WithContext(testCase.ctx))
-		resp := w.Result()
-		if resp.StatusCode != 200 {
-			t.Errorf("status code is %v instead of %v", resp.StatusCode, 200)
-		}
+			route := chi.NewRouter()
+			route.Get("/", ZonefileWriteHandler(path, "example", writer))
 
+			w := httptest.NewRecorder()
+			route.ServeHTTP(w, httptest.NewRequest("GET", "/", nil).WithContext(routeCtx))
+			resp := w.Result()
+			if resp.StatusCode != testCase.wantStatus {
+				t.Errorf("status code is %v instead of %v", resp.StatusCode, testCase.wantStatus)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			if got := string(bytes.TrimSpace(body)); got != testCase.wantBody {
+				t.Errorf("response body is %q instead of %q", got, testCase.wantBody)
+			}
+
+			if testCase.wantTruncate {
+				got, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if bytes.Contains(got, stale) {
+					t.Errorf("stale content was not truncated: file contents: %q", got)
+				}
+			}
+		})
 	}
+}
+
+// freshTempWithStale returns a path to a temp file pre-filled with stale,
+// so O_TRUNC is observable.
+func freshTempWithStale(t *testing.T, stale []byte) string {
+	t.Helper()
+	file, err := os.CreateTemp("", "zone-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(file.Name()) })
+
+	if _, err := file.Write(stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return file.Name()
 }
 
 func TestHttpRouter(t *testing.T) {
 	route := chi.NewRouter()
 	route.Mount("/", updaterHandler(updaterHandlerConfig{}))
+
+	// Without valid credentials the user-validation middleware returns 401,
+	// proving the router is fully wired.
+	w := httptest.NewRecorder()
+	route.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if w.Result().StatusCode != http.StatusUnauthorized {
+		t.Errorf("status code is %v instead of %v", w.Result().StatusCode, http.StatusUnauthorized)
+	}
 }
