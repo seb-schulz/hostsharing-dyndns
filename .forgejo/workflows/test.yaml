@@ -1,0 +1,19 @@
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+jobs:
+  test-all:
+    runs-on: debian-stable
+    strategy:
+      matrix:
+        go-version: ["1.24.x", "1.25.x", "1.26.x"]
+    steps:
+      - uses: https://forge.sebatec.eu/actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: https://forge.sebatec.eu/actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Display Go version
+        run: go version
+      - run: make test
