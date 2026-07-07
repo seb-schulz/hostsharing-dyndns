@@ -174,14 +174,18 @@ func TestIPValidationMiddleware(t *testing.T) {
 
 type mockZonefileWriter struct {
 	s          subdomain
+	setCalled  bool
+	writeCalled bool
 	checkWrite func(m *mockZonefileWriter, wr io.Writer) error
 }
 
 func (m *mockZonefileWriter) Set(s subdomain) {
 	m.s = s
+	m.setCalled = true
 
 }
 func (m *mockZonefileWriter) Write(wr io.Writer) error {
+	m.writeCalled = true
 	return m.checkWrite(m, wr)
 }
 
@@ -194,13 +198,15 @@ func TestZonefileWriteHandler(t *testing.T) {
 	tmpMissing := filepath.Join(t.TempDir(), "does", "not", "exist", "zone.txt")
 
 	for _, testCase := range []struct {
-		name         string
-		filePath     func(t *testing.T) string
-		ctx          context.Context
-		writeError   error
-		wantStatus   int
-		wantBody     string
-		wantTruncate bool
+		name               string
+		filePath           func(t *testing.T) string
+		ctx                context.Context
+		writeError         error
+		wantStatus         int
+		wantBody           string
+		wantTruncate       bool
+		wantStaleSurvives  bool
+		wantWriterUntouched bool
 	}{
 		{
 			name:         "v4 only",
@@ -225,6 +231,18 @@ func TestZonefileWriteHandler(t *testing.T) {
 			wantStatus:   http.StatusOK,
 			wantBody:     "Ok",
 			wantTruncate: true,
+		},
+		{
+			// Both addresses missing: we acknowledge the request with Ok
+			// but do not touch the zonefile or the writer, so an existing
+			// zone survives untouched.
+			name:               "v4 and v6 both nil",
+			filePath:           func(t *testing.T) string { return freshTempWithStale(t, stale) },
+			ctx:                context.Background(),
+			wantStatus:         http.StatusOK,
+			wantBody:           "Ok",
+			wantStaleSurvives:  true,
+			wantWriterUntouched: true,
 		},
 		{
 			// Errors are logged internally; the client always sees Ok.
@@ -276,6 +294,25 @@ func TestZonefileWriteHandler(t *testing.T) {
 				}
 				if bytes.Contains(got, stale) {
 					t.Errorf("stale content was not truncated: file contents: %q", got)
+				}
+			}
+
+			if testCase.wantStaleSurvives {
+				got, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Contains(got, stale) {
+					t.Errorf("stale content was lost; zonefile should have been left untouched: %q", got)
+				}
+			}
+
+			if testCase.wantWriterUntouched {
+				if writer.setCalled {
+					t.Errorf("writer.Set was called; the empty-update guard should short-circuit before the writer runs")
+				}
+				if writer.writeCalled {
+					t.Errorf("writer.Write was called; the empty-update guard should short-circuit before the writer runs")
 				}
 			}
 		})

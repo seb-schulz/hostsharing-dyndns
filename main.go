@@ -109,7 +109,13 @@ var rootCmd = &cobra.Command{
 			r.Use(hostsharing.RequestLogger())
 		}
 		r.Use(middleware.Heartbeat("/ping"))
-		r.Mount("/", updaterHandler(config.UpdaterHandler))
+
+		// RejectBots wraps only the updater route, so /ping stays
+		// accessible to health checks.
+		r.Route("/", func(sub chi.Router) {
+			sub.Use(RejectBotsMiddleware)
+			sub.Mount("/", updaterHandler(config.UpdaterHandler))
+		})
 
 		if err := hostsharing.ListenAndServe(r); err != nil {
 			return err

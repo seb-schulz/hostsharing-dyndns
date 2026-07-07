@@ -136,6 +136,14 @@ func ZonefileWriteHandler(filename string, domainSubpart string, z zoneFileWrite
 		ipaddr, _ := r.Context().Value(ctxIPv4Key).(*netip.Addr)
 		ipv6addr, _ := r.Context().Value(ctxIPv6Key).(*netip.Addr)
 
+		// An update with neither an IPv4 nor an IPv6 address would otherwise
+		// truncate the zonefile with no records, which silently removes the
+		// DNS name. Acknowledge with Ok and leave the zone untouched.
+		if ipaddr == nil && ipv6addr == nil {
+			fmt.Fprintln(w, "Ok")
+			return
+		}
+
 		z.Set(subdomain{
 			Subpart: domainSubpart,
 			TTL:     60,
