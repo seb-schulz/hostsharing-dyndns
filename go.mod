@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	github.com/go-chi/chi/v5 v5.3.1
+	github.com/go-chi/httplog/v2 v2.1.1
+	github.com/go-chi/httplog/v3 v3.4.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/sebatec-eu/config-mate v1.9.0
 	github.com/spf13/cobra v1.10.2
@@ -12,7 +14,6 @@ require (
 )
 
 require (
-	github.com/go-chi/httplog/v3 v3.4.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
@@ -20,7 +21,6 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
