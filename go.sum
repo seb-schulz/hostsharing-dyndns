@@ -34,6 +34,9 @@ github.com/sagikazarmark/locafero v0.12.0 h1:/NQhBAkUb4+fH1jivKHWusDYFjMOOKU88ee
 github.com/sagikazarmark/locafero v0.12.0/go.mod h1:sZh36u/YSZ918v0Io+U9ogLYQJ9tLLBmM4eneO6WwsI=
 github.com/sebatec-eu/config-mate v1.9.0 h1:tmzbWMBa08CKGYik5D2YKSfoacsQWymwGrEobgbUMLU=
 github.com/sebatec-eu/config-mate v1.9.0/go.mod h1:3BtSML+dbs/uCIEgjQ32M6+UV4qPc0oBVrsUgyG0jTc=
+github.com/sebatec-eu/config-mate v1.11.0 h1:iVpAvsYBcY0m4TTTuBkHPuNzgpdwBvj61Vi049wt0mY=
+github.com/sebatec-eu/config-mate v1.11.0/go.mod h1:nWLalT9Ndj1bpjgkAh+9FU7Vft+G74tKEeN0GRbUMKU=
+github.com/sebatec-eu/config-mate/v2 v2.0.1/go.mod h1:CtI/SszHJUfZ4i+muj1M4sa9G1PYgTnjr3Z4HIz7Zlw=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=
 github.com/spf13/afero v1.15.0/go.mod h1:NC2ByUVxtQs4b3sIUphxK0NioZnmxgyCrfzeuq8lxMg=
 github.com/spf13/cast v1.10.0 h1:h2x0u2shc1QuLHfxi+cTJvs30+ZAHOGRic8uyGTDWxY=

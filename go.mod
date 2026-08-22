@@ -5,7 +5,8 @@ go 1.25.0
 require (
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/sebatec-eu/config-mate v1.9.0
+	github.com/sebatec-eu/config-mate v1.11.0
+	github.com/sebatec-eu/config-mate/v2 v2.0.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.53.0
 	gopkg.in/yaml.v3 v3.0.1
